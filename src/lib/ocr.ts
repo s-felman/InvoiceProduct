@@ -1,32 +1,108 @@
 import Tesseract from 'tesseract.js';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Use local worker file
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 
 export const extractTextFromPDF = async (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const arrayBuffer = e.target?.result as ArrayBuffer;
-        const uint8Array = new Uint8Array(arrayBuffer);
+  try {
+    if (file.type === 'application/pdf') {
+      return await extractTextFromPDFFile(file);
+    } else if (file.type.startsWith('image/')) {
+      return await extractTextFromImage(file);
+    } else {
+      throw new Error('Unsupported file type. Please upload a PDF or image file.');
+    }
+  } catch (error) {
+    console.error('OCR extraction error:', error);
+    throw new Error(`Failed to extract text: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
+
+const extractTextFromPDFFile = async (file: File): Promise<string> => {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  
+  let fullText = '';
+  
+  // Process each page
+  for (let pageNum = 1; pageNum <= Math.min(pdf.numPages, 5); pageNum++) { // Limit to first 5 pages
+    try {
+      const page = await pdf.getPage(pageNum);
+      
+      // Get text content first (faster)
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items
+        .map((item: any) => item.str)
+        .join(' ')
+        .trim();
+      
+      if (pageText && pageText.length > 50) {
+        // If we have good text content, use it
+        fullText += pageText + '\n';
+      } else {
+        // If text is sparse, use OCR on rendered page
+        const viewport = page.getViewport({ scale: 2.0 });
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d')!;
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
         
-        // Convert PDF to image for OCR processing
-        // In a real implementation, you'd use PDF.js to convert PDF pages to images
-        // For now, we'll handle image files directly
-        const blob = new Blob([uint8Array], { type: file.type });
+        await page.render({
+          canvasContext: context,
+          viewport: viewport
+        }).promise;
+        
+        // Convert canvas to blob and run OCR
+        const blob = await new Promise<Blob>((resolve) => {
+          canvas.toBlob((blob) => resolve(blob!), 'image/png');
+        });
+        
         const imageUrl = URL.createObjectURL(blob);
-        
         const { data: { text } } = await Tesseract.recognize(imageUrl, 'eng', {
-          logger: (m) => console.log(m)
+          logger: (m) => {
+            if (m.status === 'recognizing text') {
+              console.log(`OCR Progress Page ${pageNum}: ${Math.round(m.progress * 100)}%`);
+            }
+          }
         });
         
         URL.revokeObjectURL(imageUrl);
-        resolve(text);
-      } catch (error) {
-        reject(error);
+        fullText += text + '\n';
       }
-    };
-    reader.onerror = reject;
-    reader.readAsArrayBuffer(file);
-  });
+    } catch (pageError) {
+      console.error(`Error processing page ${pageNum}:`, pageError);
+      // Continue with other pages
+    }
+  }
+  
+  if (!fullText.trim()) {
+    throw new Error('No text could be extracted from the PDF');
+  }
+  
+  return fullText.trim();
+};
+
+const extractTextFromImage = async (file: File): Promise<string> => {
+  const imageUrl = URL.createObjectURL(file);
+  
+  try {
+    const { data: { text } } = await Tesseract.recognize(imageUrl, 'eng', {
+      logger: (m) => {
+        if (m.status === 'recognizing text') {
+          console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`);
+        }
+      }
+    });
+    
+    if (!text.trim()) {
+      throw new Error('No text could be extracted from the image');
+    }
+    
+    return text.trim();
+  } finally {
+    URL.revokeObjectURL(imageUrl);
+  }
 };
 
 export const parseInvoiceData = (text: string) => {
