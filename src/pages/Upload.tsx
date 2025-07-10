@@ -42,29 +42,19 @@ const Upload: React.FC = () => {
     };
     dispatch({ type: 'ADD_LOG', payload: startLog });
 
-        // Add OCR start log
-        const ocrStartLog = {
-          id: crypto.randomUUID(),
-          timestamp: new Date(),
-          message: `Starting OCR extraction for ${file.name}`,
-          type: 'info' as const,
-          invoiceId
-        };
-        dispatch({ type: 'ADD_LOG', payload: ocrStartLog });
+    // Add OCR start log
+    const ocrStartLog = {
+      id: crypto.randomUUID(),
+      timestamp: new Date(),
+      message: `Starting OCR extraction for ${file.name}`,
+      type: 'info' as const,
+      invoiceId
+    };
+    dispatch({ type: 'ADD_LOG', payload: ocrStartLog });
 
     try {
       // Save to database
       await supabase.from('invoices').insert({
-        // Add OCR complete log
-        const ocrCompleteLog = {
-          id: crypto.randomUUID(),
-          timestamp: new Date(),
-          message: `OCR extraction completed. Extracted ${ocrText.length} characters`,
-          type: 'success' as const,
-          invoiceId
-        };
-        dispatch({ type: 'ADD_LOG', payload: ocrCompleteLog });
-        
         id: invoiceId,
         file_name: file.name,
         upload_date: new Date().toISOString(),
@@ -75,26 +65,19 @@ const Upload: React.FC = () => {
 
       // Extract text using OCR
       const ocrText = await extractTextFromPDF(file);
-            const aiStartLog = {
-              id: crypto.randomUUID(),
-              timestamp: new Date(),
-              message: `Starting AI enhancement with ${state.aiSettings.provider}`,
-              type: 'info' as const,
-              invoiceId
-            };
-            dispatch({ type: 'ADD_LOG', payload: aiStartLog });
-            
+
+      // Add OCR complete log
+      const ocrCompleteLog = {
+        id: crypto.randomUUID(),
+        timestamp: new Date(),
+        message: `OCR extraction completed. Extracted ${ocrText.length} characters`,
+        type: 'success' as const,
+        invoiceId
+      };
+      dispatch({ type: 'ADD_LOG', payload: ocrCompleteLog });
       
       // Parse basic invoice data
       const extractedFields = parseInvoiceData(ocrText);
-              const aiSuccessLog = {
-                id: crypto.randomUUID(),
-                timestamp: new Date(),
-                message: `AI enhancement completed successfully`,
-                type: 'success' as const,
-                invoiceId
-              };
-              dispatch({ type: 'ADD_LOG', payload: aiSuccessLog });
       
       // Calculate confidence
       const confidence = calculateConfidence(extractedFields, ocrText);
@@ -103,10 +86,29 @@ const Upload: React.FC = () => {
       let enhancedFields = extractedFields;
       if (state.aiSettings.provider !== 'none') {
         try {
+          const aiStartLog = {
+            id: crypto.randomUUID(),
+            timestamp: new Date(),
+            message: `Starting AI enhancement with ${state.aiSettings.provider}`,
+            type: 'info' as const,
+            invoiceId
+          };
+          dispatch({ type: 'ADD_LOG', payload: aiStartLog });
+
           const aiEnhanced = await enhanceInvoiceParsingWithAI(ocrText, state.aiSettings);
           if (aiEnhanced) {
             enhancedFields = { ...extractedFields, ...aiEnhanced };
           }
+
+          const aiSuccessLog = {
+            id: crypto.randomUUID(),
+            timestamp: new Date(),
+            message: `AI enhancement completed successfully`,
+            type: 'success' as const,
+            invoiceId
+          };
+          dispatch({ type: 'ADD_LOG', payload: aiSuccessLog });
+
         } catch (error) {
           console.error('AI enhancement failed:', error);
           const errorLog = {
