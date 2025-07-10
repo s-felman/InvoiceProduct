@@ -38,7 +38,7 @@ const FileUpload: React.FC<FileUploadProps> = ({
 
     if (!file) return;
 
-    if (!file.type.includes('pdf') && !file.type.includes('image')) {
+    if (file.type !== 'application/pdf' && !file.type.startsWith('image/')) {
       setError('Please select a PDF or image file');
       return;
     }
@@ -55,6 +55,18 @@ const FileUpload: React.FC<FileUploadProps> = ({
     const file = e.target.files?.[0];
     if (file) {
       setError(null);
+      
+      // Validate file type
+      if (file.type !== 'application/pdf' && !file.type.startsWith('image/')) {
+        setError('Please select a PDF or image file');
+        return;
+      }
+      
+      if (file.size > 10 * 1024 * 1024) {
+        setError('File size must be less than 10MB');
+        return;
+      }
+      
       onFileSelect(file);
     }
   }, [onFileSelect]);
