@@ -4,7 +4,7 @@ import FileUpload from '../components/FileUpload';
 import ProcessingStatus from '../components/ProcessingStatus';
 import InvoiceDetails from '../components/InvoiceDetails';
 import { useApp } from '../contexts/AppContext';
-import { extractTextFromPDF, parseInvoiceData, calculateConfidence } from '../lib/ocr';
+import { extractTextFromPDF, parseInvoiceData, calculateConfidence, getLastExtractionMetadata } from '../lib/ocr';
 import { enhanceInvoiceParsingWithAI } from '../lib/ai';
 import { supabase } from '../lib/supabase';
 import { InvoiceData } from '../types';
@@ -42,16 +42,6 @@ const Upload: React.FC = () => {
     };
     dispatch({ type: 'ADD_LOG', payload: startLog });
 
-    // Add OCR start log
-    const ocrStartLog = {
-      id: crypto.randomUUID(),
-      timestamp: new Date(),
-      message: `Starting OCR extraction for ${file.name}`,
-      type: 'info' as const,
-      invoiceId
-    };
-    dispatch({ type: 'ADD_LOG', payload: ocrStartLog });
-
     try {
       // Save to database
       await supabase.from('invoices').insert({
@@ -63,52 +53,85 @@ const Upload: React.FC = () => {
         confidence: { overall: 0, fields: {} }
       });
 
-      // Extract text using OCR
-      const ocrText = await extractTextFromPDF(file);
+      // Add OCR start log
+      const ocrStartLog = {
+        id: crypto.randomUUID(),
+        timestamp: new Date(),
+        message: `Starting ${file.type === 'application/pdf' ? 'server-side PDF' : 'client-side OCR'} extraction`,
+        type: 'info' as const,
+        invoiceId
+      };
+      dispatch({ type: 'ADD_LOG', payload: ocrStartLog });
 
+      // Extract text using server or client OCR
+      const ocrText = await extractTextFromPDF(file);
+      
+      // Get extraction metadata
+      const metadata = getLastExtractionMetadata();
+
+      // Parse basic invoice data
+      const extractedFields = parseInvoiceData(ocrText, metadata.parsedData);
+      
+      // Calculate confidence
+      const confidence = calculateConfidence(extractedFields, ocrText, metadata.confidence);
+      
       // Add OCR complete log
       const ocrCompleteLog = {
         id: crypto.randomUUID(),
         timestamp: new Date(),
-        message: `OCR extraction completed. Extracted ${ocrText.length} characters`,
+        message: `OCR extraction completed. Extracted ${ocrText.length} characters (Confidence: ${confidence.overall}%)`,
         type: 'success' as const,
         invoiceId
       };
       dispatch({ type: 'ADD_LOG', payload: ocrCompleteLog });
       
-      // Parse basic invoice data
-      const extractedFields = parseInvoiceData(ocrText);
-      
-      // Calculate confidence
-      const confidence = calculateConfidence(extractedFields, ocrText);
-      
-      // Try to enhance with AI if configured
+      // Enhanced AI logic for image-only PDFs or poor extractions
       let enhancedFields = extractedFields;
-      if (state.aiSettings.provider !== 'none') {
+      const shouldUseAI = state.aiSettings.provider !== 'none' && 
+                         (metadata.requiresAIEnhancement || 
+                          metadata.isImageOnlyPDF || 
+                          confidence.overall < 75);
+      
+      if (shouldUseAI) {
         try {
           const aiStartLog = {
             id: crypto.randomUUID(),
             timestamp: new Date(),
-            message: `Starting AI enhancement with ${state.aiSettings.provider}`,
+            message: `Starting AI enhancement with ${state.aiSettings.provider} ${metadata.isImageOnlyPDF ? '(Image-only PDF detected)' : '(Low confidence extraction)'}`,
             type: 'info' as const,
             invoiceId
           };
           dispatch({ type: 'ADD_LOG', payload: aiStartLog });
 
-          const aiEnhanced = await enhanceInvoiceParsingWithAI(ocrText, state.aiSettings);
+          const aiEnhanced = await enhanceInvoiceParsingWithAI(
+            ocrText, 
+            state.aiSettings, 
+            metadata.isImageOnlyPDF
+          );
+          
           if (aiEnhanced) {
-            enhancedFields = { ...extractedFields, ...aiEnhanced };
+            // Merge AI results with extracted fields, prioritizing AI for missing/poor fields
+            enhancedFields = {
+              invoiceNumber: aiEnhanced.invoiceNumber || extractedFields.invoiceNumber,
+              date: aiEnhanced.date || extractedFields.date,
+              vendor: aiEnhanced.vendor || extractedFields.vendor,
+              totalAmount: aiEnhanced.totalAmount || extractedFields.totalAmount,
+              lineItems: aiEnhanced.lineItems?.length > 0 ? aiEnhanced.lineItems : extractedFields.lineItems,
+              currency: aiEnhanced.currency || extractedFields.currency,
+              subtotal: aiEnhanced.subtotal || extractedFields.subtotal,
+              tax: aiEnhanced.tax || extractedFields.tax,
+              taxRate: aiEnhanced.taxRate || extractedFields.taxRate
+            };
+
+            const aiSuccessLog = {
+              id: crypto.randomUUID(),
+              timestamp: new Date(),
+              message: `AI enhancement completed successfully - Improved ${Object.keys(aiEnhanced).filter(k => aiEnhanced[k]).length} fields`,
+              type: 'success' as const,
+              invoiceId
+            };
+            dispatch({ type: 'ADD_LOG', payload: aiSuccessLog });
           }
-
-          const aiSuccessLog = {
-            id: crypto.randomUUID(),
-            timestamp: new Date(),
-            message: `AI enhancement completed successfully`,
-            type: 'success' as const,
-            invoiceId
-          };
-          dispatch({ type: 'ADD_LOG', payload: aiSuccessLog });
-
         } catch (error) {
           console.error('AI enhancement failed:', error);
           const errorLog = {
