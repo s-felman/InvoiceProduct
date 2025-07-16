@@ -10,7 +10,7 @@ An AI-powered invoice processing application that extracts data from PDF invoice
 ## ✨ Features
 
 - 📄 **PDF Invoice Processing** - Upload and extract text from PDF invoices
-- 🤖 **AI-Powered Enhancement** - Google Gemini integration for improved field extraction
+- 🤖 **AI-Powered Enhancement** - Google Gemini, OpenAI and Azure OpenAI  integration for improved field extraction
 - 🔍 **Smart OCR** - Hybrid approach using OCR.space API and Tesseract.js
 - 📊 **Field Extraction** - Automatically extracts invoice numbers, dates, vendors, totals, and line items
 - 💾 **Data Persistence** - Supabase backend for storing processed invoices
@@ -24,7 +24,7 @@ An AI-powered invoice processing application that extracts data from PDF invoice
 - **Styling**: Tailwind CSS
 - **Backend**: Supabase (PostgreSQL, Edge Functions)
 - **OCR**: OCR.space API, Tesseract.js
-- **AI**: Google Gemini API
+- **AI**: OpenAI, Azure OpenAI, Google Gemini API
 - **Deployment**: Netlify
 - **Icons**: Lucide React
 
@@ -100,25 +100,7 @@ The application uses the following tables:
 
 All migrations are included in the `supabase/migrations/` directory.
 
-### 6. Get Google Gemini API Key
-
-1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Create a new API key
-3. Copy the key (starts with "AIza...")
-
-### 7. Configure AI Provider
-
-1. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
-2. Navigate to Settings page
-3. Select "Google Gemini" as provider
-4. Enter your API key
-5. Click "Test Connection" and then "Save Settings"
-
-### 8. Development Server
+### 6. Development Server
 
 ```bash
 npm run dev
@@ -142,7 +124,7 @@ netlify deploy --prod --dir=dist
 ### AI Enhancement Logic
 
 AI enhancement is triggered when:
-- OCR confidence is below 75%
+- OCR confidence is below 90%
 - PDF is detected as image-only
 - Basic OCR extraction finds fewer than 3 fields
 
@@ -156,11 +138,6 @@ PDF → Supabase Edge Function → OCR.space API → Extracted Text
 ### 2. Image Processing (Fallback)
 ```
 Image → Browser → Tesseract.js → Extracted Text
-```
-
-### 3. Field Extraction
-```
-Raw Text → Regex Patterns → Structured Data → AI Enhancement → Final Result
 ```
 
 ## 🔧 Development Challenges & Solutions
@@ -179,7 +156,7 @@ Raw Text → Regex Patterns → Structured Data → AI Enhancement → Final Res
 
 **Solution:** Through iterative testing and adjustment:
 - Experimented with different preprocessing techniques
-- Calibrated confidence thresholds for optimal accuracy (75% trigger for AI enhancement)
+- Calibrated confidence thresholds for optimal accuracy (90% trigger for AI enhancement)
 - Implemented fallback mechanisms for edge cases
 - Created regex patterns specific to invoice data extraction
 - Added validation rules for common invoice formats
@@ -270,3 +247,4 @@ Raw Text → Regex Patterns → Structured Data → AI Enhancement → Final Res
    - Debugging information for developers
    - Processing transparency
 
+Thank you for the opportunity to work on this project.

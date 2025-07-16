@@ -91,7 +91,7 @@ const Upload: React.FC = () => {
       state.aiSettings.provider !== 'none' && 
                          (metadata.requiresAIEnhancement || 
                           metadata.isImageOnlyPDF || 
-                          confidence.overall < 100);
+                          confidence.overall < 90);
       
       if (shouldUseAI) {
         try {
