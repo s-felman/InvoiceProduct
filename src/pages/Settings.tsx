@@ -14,7 +14,7 @@ const Settings: React.FC = () => {
     setFormData(state.aiSettings);
   }, [state.aiSettings]);
 
-  const handleProviderChange = (provider: 'openai' | 'azure' | 'none') => {
+  const handleProviderChange = (provider: 'openai' | 'azure' | 'gemini' | 'none') => {
     setFormData(prev => ({ ...prev, provider }));
   };
 
@@ -37,6 +37,7 @@ const Settings: React.FC = () => {
           azure_api_key: formData.azureApiKey || null,
           azure_endpoint: formData.azureEndpoint || null,
           azure_deployment_name: formData.azureDeploymentName || null,
+          gemini_api_key: formData.geminiApiKey || null,
           updated_at: new Date().toISOString()
         });
 
@@ -59,51 +60,66 @@ const Settings: React.FC = () => {
 
   const testConnection = async () => {
     if (formData.provider === 'none') return;
+    
+    setIsSaving(true);
+    setSaveMessage(null);
 
     try {
-      // Simple test request to validate API keys
-      const testPrompt = "Test connection";
-      
-      if (formData.provider === 'openai' && formData.openaiApiKey) {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${formData.openaiApiKey}`
-          },
-          body: JSON.stringify({
-            model: 'gpt-3.5-turbo',
-            messages: [{ role: 'user', content: testPrompt }],
-            max_tokens: 10
-          })
-        });
-
-        if (response.ok) {
-          setSaveMessage({ type: 'success', message: 'OpenAI connection successful!' });
+      if (formData.provider === 'gemini' && formData.geminiApiKey) {
+        const key = formData.geminiApiKey.trim();
+        
+        // Validate API key format without making actual API calls
+        if (!key) {
+          setSaveMessage({ type: 'error', message: '❌ API key is required' });
+        } else if (!key.startsWith('AIza')) {
+          setSaveMessage({ type: 'error', message: '❌ Invalid Gemini API key format. Should start with "AIza"' });
+        } else if (key.length < 30) {
+          setSaveMessage({ type: 'error', message: '❌ API key appears too short' });
         } else {
-          setSaveMessage({ type: 'error', message: 'OpenAI connection failed. Check your API key.' });
+          setSaveMessage({ 
+            type: 'success', 
+            message: '✅ Gemini API key format looks valid! Save settings to use it.' 
+          });
+        }
+      } else if (formData.provider === 'openai' && formData.openaiApiKey) {
+        const key = formData.openaiApiKey.trim();
+        
+        if (!key) {
+          setSaveMessage({ type: 'error', message: '❌ API key is required' });
+        } else if (!key.startsWith('sk-')) {
+          setSaveMessage({ type: 'error', message: '❌ Invalid OpenAI API key format. Should start with "sk-"' });
+        } else if (key.length < 40) {
+          setSaveMessage({ type: 'error', message: '❌ API key appears too short' });
+        } else {
+          setSaveMessage({ 
+            type: 'success', 
+            message: '✅ OpenAI API key format looks valid! Save settings to use it.' 
+          });
         }
       } else if (formData.provider === 'azure' && formData.azureApiKey && formData.azureEndpoint) {
-        const response = await fetch(`${formData.azureEndpoint}/openai/deployments/${formData.azureDeploymentName}/chat/completions?api-version=2023-05-15`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'api-key': formData.azureApiKey
-          },
-          body: JSON.stringify({
-            messages: [{ role: 'user', content: testPrompt }],
-            max_tokens: 10
-          })
-        });
-
-        if (response.ok) {
-          setSaveMessage({ type: 'success', message: 'Azure OpenAI connection successful!' });
+        const key = formData.azureApiKey.trim();
+        const endpoint = formData.azureEndpoint.trim();
+        const deployment = formData.azureDeploymentName?.trim();
+        
+        if (!key || !endpoint || !deployment) {
+          setSaveMessage({ type: 'error', message: '❌ All Azure fields are required' });
+        } else if (!endpoint.startsWith('https://')) {
+          setSaveMessage({ type: 'error', message: '❌ Azure endpoint should start with "https://"' });
+        } else if (!endpoint.includes('.openai.azure.com')) {
+          setSaveMessage({ type: 'error', message: '❌ Azure endpoint should contain ".openai.azure.com"' });
         } else {
-          setSaveMessage({ type: 'error', message: 'Azure OpenAI connection failed. Check your configuration.' });
+          setSaveMessage({ 
+            type: 'success', 
+            message: '✅ Azure configuration looks valid! Save settings to use it.' 
+          });
         }
+      } else {
+        setSaveMessage({ type: 'error', message: '❌ Please fill in all required fields' });
       }
     } catch (error) {
-      setSaveMessage({ type: 'error', message: 'Connection test failed. Please check your settings.' });
+      setSaveMessage({ type: 'error', message: '❌ Validation failed' });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -133,9 +149,10 @@ const Settings: React.FC = () => {
             <label className="text-sm font-medium text-gray-700 mb-3 block">
               AI Provider
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               {[
                 { value: 'none', label: 'None', description: 'Basic OCR only' },
+                { value: 'gemini', label: 'Google Gemini', description: 'Free AI parsing (Recommended)' },
                 { value: 'openai', label: 'OpenAI', description: 'GPT-powered parsing' },
                 { value: 'azure', label: 'Azure OpenAI', description: 'Enterprise OpenAI' }
               ].map(({ value, label, description }) => (
@@ -191,6 +208,49 @@ const Settings: React.FC = () => {
                     OpenAI Dashboard
                   </a>
                 </p>
+              </div>
+            </div>
+          )}
+
+          {/* Google Gemini Configuration */}
+          {formData.provider === 'gemini' && (
+            <div className="space-y-4">
+              <h3 className="text-md font-medium text-gray-900">Google Gemini Configuration</h3>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  API Key
+                </label>
+                <input
+                  type="password"
+                  value={formData.geminiApiKey || ''}
+                  onChange={(e) => handleInputChange('geminiApiKey', e.target.value)}
+                  placeholder="AIza..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Get your free API key from{' '}
+                  <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-500">
+                    Google AI Studio
+                  </a>
+                </p>
+              </div>
+              <div className="bg-green-50 border border-green-200 rounded-md p-4">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <CheckCircle className="h-5 w-5 text-green-400" />
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-green-800">
+                      Recommended Choice
+                    </h3>
+                    <div className="mt-2 text-sm text-green-700">
+                      <p>
+                        Google Gemini offers generous free usage limits and excellent performance for invoice parsing.
+                        No billing setup required!
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}

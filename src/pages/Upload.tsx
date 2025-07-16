@@ -87,10 +87,11 @@ const Upload: React.FC = () => {
       
       // Enhanced AI logic for image-only PDFs or poor extractions
       let enhancedFields = extractedFields;
-      const shouldUseAI = state.aiSettings.provider !== 'none' && 
+      const shouldUseAI = 
+      state.aiSettings.provider !== 'none' && 
                          (metadata.requiresAIEnhancement || 
                           metadata.isImageOnlyPDF || 
-                          confidence.overall < 75);
+                          confidence.overall < 100);
       
       if (shouldUseAI) {
         try {

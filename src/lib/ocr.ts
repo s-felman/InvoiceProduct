@@ -1,16 +1,15 @@
 import Tesseract from 'tesseract.js';
-import * as pdfjsLib from 'pdfjs-dist';
-
-// // Use local worker file
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
-// Set up PDF.js worker
-// pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+import { supabase } from './supabase';
 
 export const extractTextFromPDF = async (file: File): Promise<string> => {
   try {
     if (file.type === 'application/pdf') {
-      return await extractTextFromPDFFile(file);
+      // Use server-side extraction for PDFs
+      console.log('Using server-side PDF extraction...');
+      return await extractTextFromPDFServer(file);
     } else if (file.type.startsWith('image/')) {
+      // Use client-side OCR for images
+      console.log('Using client-side OCR for image...');
       return await extractTextFromImage(file);
     } else {
       throw new Error('Unsupported file type. Please upload a PDF or image file.');
@@ -21,85 +20,78 @@ export const extractTextFromPDF = async (file: File): Promise<string> => {
   }
 };
 
-const extractTextFromPDFFile = async (file: File): Promise<string> => {
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  
-  let fullText = '';
-  
-  // Process each page
-  for (let pageNum = 1; pageNum <= Math.min(pdf.numPages, 5); pageNum++) { // Limit to first 5 pages
-    try {
-      const page = await pdf.getPage(pageNum);
-      
-      // Get text content first (faster)
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items
-        .map((item: any) => item.str)
-        .join(' ')
-        .trim();
-      
-      if (pageText && pageText.length > 50) {
-        // If we have good text content, use it
-        fullText += pageText + '\n';
-      } else {
-        // If text is sparse, use OCR on rendered page
-        const viewport = page.getViewport({ scale: 2.0 });
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d')!;
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-        
-        await page.render({
-          canvasContext: context,
-          viewport: viewport
-        }).promise;
-        
-        // Convert canvas to blob and run OCR
-        const blob = await new Promise<Blob>((resolve) => {
-          canvas.toBlob((blob) => resolve(blob!), 'image/png');
-        });
-        
-        const imageUrl = URL.createObjectURL(blob);
-        const { data: { text } } = await Tesseract.recognize(imageUrl, 'eng', {
-          logger: (m) => {
-            if (m.status === 'recognizing text') {
-              console.log(`OCR Progress Page ${pageNum}: ${Math.round(m.progress * 100)}%`);
-            }
-          }
-        });
-        
-        URL.revokeObjectURL(imageUrl);
-        fullText += text + '\n';
-      }
-    } catch (pageError) {
-      console.error(`Error processing page ${pageNum}:`, pageError);
-      // Continue with other pages
+// Enhanced server-side extraction with comprehensive data
+const extractTextFromPDFServer = async (file: File): Promise<string> => {
+  const formData = new FormData();
+  formData.append('pdf', file);
+
+  console.log('Calling Supabase Edge Function for PDF processing...');
+
+  try {
+    const { data, error } = await supabase.functions.invoke('extract-pdf', {
+      body: formData,
+    });
+
+    if (error) {
+      console.error('Supabase function error:', error);
+      throw new Error(`Server extraction failed: ${error.message}`);
     }
+
+    if (!data?.success) {
+      throw new Error(data?.error || 'Server extraction failed');
+    }
+
+    console.log('Server extraction successful!');
+    console.log('File saved to:', data.fileInfo?.storagePath);
+    
+    // Store metadata including file information
+    (window as any).lastExtractionMetadata = {
+      isImageOnlyPDF: data.isImageOnlyPDF,
+      requiresAIEnhancement: data.requiresAIEnhancement,
+      confidence: data.confidence,
+      parsedData: data.parsedData,
+      fileInfo: data.fileInfo // NEW: File storage information
+    };
+    
+    return data.text;
+  } catch (error) {
+    console.error('Server extraction failed:', error);
+    console.log('Falling back to client-side OCR...');
+    return await extractTextFromImage(file);
   }
-  
-  if (!fullText.trim()) {
-    throw new Error('No text could be extracted from the PDF');
-  }
-  
-  return fullText.trim();
 };
 
+// Enhanced client-side OCR with better settings
 const extractTextFromImage = async (file: File): Promise<string> => {
   const imageUrl = URL.createObjectURL(file);
   
   try {
+    console.log('Starting enhanced Tesseract OCR...');
     const { data: { text } } = await Tesseract.recognize(imageUrl, 'eng', {
       logger: (m) => {
         if (m.status === 'recognizing text') {
           console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`);
         }
-      }
+      },
+      tessjs_create_pdf: '1',
+      tessjs_pdf_title: 'Invoice',
+      preserve_interword_spaces: '1'
     });
     
     if (!text.trim()) {
       throw new Error('No text could be extracted from the image');
     }
+    
+    console.log('Tesseract OCR completed');
+    
+    // Mark as likely image-only for AI enhancement
+    //@ts-ignore
+    window.lastExtractionMetadata = {
+      isImageOnlyPDF: true,
+      requiresAIEnhancement: true,
+      confidence: 60, // Lower confidence for image-only
+      parsedData: null
+    };
     
     return text.trim();
   } finally {
@@ -107,167 +99,148 @@ const extractTextFromImage = async (file: File): Promise<string> => {
   }
 };
 
-export const parseInvoiceData = (text: string) => {
-  // Enhanced regex patterns for invoice data extraction
-  const invoiceNumberPatterns = [
-    /(?:invoice|inv|bill|receipt)\s*(?:number|no|num|#)\s*:?\s*([a-zA-Z0-9-]+)/i,
-    /(?:^|\s)(?:inv|invoice)\s*[#:]?\s*([a-zA-Z0-9-]+)/i,
-    /#\s*([a-zA-Z0-9-]+)/i
+// Enhanced parsing function with server data integration
+export const parseInvoiceData = (text: string, serverData?: any) => {
+  // If we have high-quality server-parsed data, use that
+  if (serverData && Object.values(serverData).filter(Boolean).length >= 3) {
+    console.log('Using server-parsed data');
+    return {
+      invoiceNumber: serverData.invoiceNumber,
+      date: serverData.date,
+      vendor: serverData.vendor,
+      totalAmount: serverData.totalAmount,
+      lineItems: serverData.lineItems || [],
+      currency: serverData.currency || 'USD',
+      subtotal: serverData.subtotal,
+      tax: serverData.tax,
+      taxRate: serverData.taxRate
+    };
+  }
+
+  // Fallback to basic regex parsing with enhanced patterns
+  console.log('Using fallback regex parsing');
+  
+  const invoicePatterns = [
+    /(?:invoice|inv)\s*(?:number|no|num|#)?\s*:?\s*([a-zA-Z0-9-]+)/i,
+    /(?:inv|invoice)\s*([a-zA-Z0-9-]+)/i,
+    /#\s*([a-zA-Z0-9-]+)/,
+    /(?:ref|reference)\s*:?\s*([a-zA-Z0-9-]+)/i
   ];
   
   const datePatterns = [
     /(?:date|dated|invoice\s+date)\s*:?\s*(\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})/i,
-    /(\d{1,2}[-/.]\d{1,2}[-/.]\d{4})/g,
-    /(?:date)\s*:?\s*([a-zA-Z]+\s+\d{1,2},?\s+\d{4})/i
+    /(\d{1,2}[-/.]\d{1,2}[-/.]\d{4})/,
+    /(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})/
   ];
   
   const vendorPatterns = [
-    /(?:from|vendor|company|bill\s+to|sold\s+by)\s*:?\s*([^\n\r]+?)(?:\n|\r|$)/i,
-    /^([A-Z][A-Za-z\s&.,'-]+(?:LLC|Inc|Corp|Ltd|Co\.)?)\s*$/m,
-    /(?:^|\n)([A-Z][A-Za-z\s&.,'-]{10,}?)(?:\n|$)/m
+    /(?:from|vendor|company|bill\s+to)\s*:?\s*([^\n]+)/i,
+    /^([A-Z][A-Za-z\s&,.-]+(?:Inc|LLC|Corp|Ltd|Co))/m
   ];
   
   const totalPatterns = [
-    /(?:total|amount\s+due|grand\s+total|final\s+total)\s*:?\s*\$?\s*(\d+[.,]?\d*)/i,
-    /(?:total)\s*\$?\s*(\d+[.,]\d{2})/i,
-    /\$\s*(\d+[.,]\d{2})\s*(?:total|due|amount)/i
+    /(?:total|amount|sum|grand\s+total|balance\s+due)\s*:?\s*\$?(\d+[.,]?\d*)/i,
+    /\$\s*(\d+[.,]\d{2})\s*$/m
   ];
   
-  // Extract invoice number
-  let invoiceNumber = '';
-  for (const pattern of invoiceNumberPatterns) {
-    const match = text.match(pattern);
-    if (match && match[1]) {
-      invoiceNumber = match[1].trim();
-      break;
-    }
-  }
+  const invoiceNumber = findBestMatch(text, invoicePatterns);
+  const date = findBestMatch(text, datePatterns);
+  const vendor = findBestMatch(text, vendorPatterns);
+  const totalAmount = findBestMatch(text, totalPatterns);
   
-  // Extract date
-  let date = '';
-  for (const pattern of datePatterns) {
-    const match = text.match(pattern);
-    if (match && match[1]) {
-      date = match[1].trim();
-      break;
-    }
-  }
-  
-  // Extract vendor
-  let vendor = '';
-  for (const pattern of vendorPatterns) {
-    const match = text.match(pattern);
-    if (match && match[1]) {
-      const candidateVendor = match[1].trim();
-      if (candidateVendor.length > 3 && candidateVendor.length < 100) {
-        vendor = candidateVendor;
-        break;
-      }
-    }
-  }
-  
-  // Extract total amount
-  let totalAmount = '';
-  for (const pattern of totalPatterns) {
-    const match = text.match(pattern);
-    if (match && match[1]) {
-      totalAmount = match[1].replace(',', '.');
-      break;
-    }
-  }
-  
-  // Extract line items (enhanced)
-  const lineItems = [];
-  const lines = text.split('\n');
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    
-    // Pattern for line items: description + quantity + price + total
-    const itemPatterns = [
-      /^(.+?)\s+(\d+)\s+\$?\s*(\d+[.,]\d{2})\s+\$?\s*(\d+[.,]\d{2})$/,
-      /^(.+?)\s+(\d+)\s+(\d+[.,]\d{2})\s+(\d+[.,]\d{2})$/,
-      /(.+?)\s+\$?\s*(\d+[.,]\d{2})\s*$/
-    ];
-    
-    for (const pattern of itemPatterns) {
-      const itemMatch = line.match(pattern);
-      if (itemMatch) {
-        if (itemMatch.length === 5) {
-          // Full line item with quantity
-          lineItems.push({
-            description: itemMatch[1].trim(),
-            quantity: parseInt(itemMatch[2]),
-            price: parseFloat(itemMatch[3].replace(',', '.')),
-            total: parseFloat(itemMatch[4].replace(',', '.'))
-          });
-        } else if (itemMatch.length === 3) {
-          // Simple item with just description and price
-          lineItems.push({
-            description: itemMatch[1].trim(),
-            quantity: 1,
-            price: parseFloat(itemMatch[2].replace(',', '.')),
-            total: parseFloat(itemMatch[2].replace(',', '.'))
-          });
-        }
-        break;
-      }
-    }
-  }
+  // Extract line items
+  const lineItems = extractBasicLineItems(text);
   
   return {
-    invoiceNumber: invoiceNumber || undefined,
-    date: date || undefined,
-    vendor: vendor || undefined,
-    totalAmount: totalAmount || undefined,
-    lineItems: lineItems.length > 0 ? lineItems : undefined
+    invoiceNumber,
+    date,
+    vendor: vendor?.trim(),
+    totalAmount,
+    lineItems,
+    currency: 'USD',
+    subtotal: null,
+    tax: null,
+    taxRate: null
   };
 };
 
-export const calculateConfidence = (extractedFields: any, ocrText: string) => {
-  let totalConfidence = 0;
-  let fieldCount = 0;
+function findBestMatch(text: string, patterns: RegExp[]): string | null {
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  return null;
+}
+
+function extractBasicLineItems(text: string): any[] {
+  const lines = text.split('\n');
+  const items = [];
+  
+  for (const line of lines) {
+    const itemMatch = line.match(/(.+?)\s+(\d+)\s+\$?(\d+\.?\d*)\s+\$?(\d+\.?\d*)/);
+    if (itemMatch) {
+      items.push({
+        description: itemMatch[1].trim(),
+        quantity: parseInt(itemMatch[2]),
+        unitPrice: parseFloat(itemMatch[3]),
+        total: parseFloat(itemMatch[4])
+      });
+    }
+  }
+  
+  return items;
+}
+
+export const calculateConfidence = (extractedFields: any, ocrText: string, serverConfidence?: number) => {
+  // Use server confidence if available and reliable
+  if (serverConfidence && serverConfidence > 70) {
+    return {
+      overall: serverConfidence,
+      fields: {
+        invoiceNumber: extractedFields.invoiceNumber ? 90 : 0,
+        date: extractedFields.date ? 90 : 0,
+        vendor: extractedFields.vendor ? 90 : 0,
+        totalAmount: extractedFields.totalAmount ? 90 : 0,
+        lineItems: extractedFields.lineItems?.length > 0 ? 90 : 0
+      }
+    };
+  }
+
+  // Calculate confidence based on extracted fields
+  let score = 0;
   const fieldConfidences: any = {};
   
-  // Calculate confidence based on field completeness and text quality
-  const textQuality = Math.min(100, Math.max(50, ocrText.length / 10)); // Base confidence on text length
-  
-  Object.keys(extractedFields).forEach(key => {
-    if (extractedFields[key]) {
-      fieldCount++;
-      let confidence = textQuality;
-      
-      // Adjust confidence based on field type and content
-      switch (key) {
-        case 'invoiceNumber':
-          confidence = extractedFields[key].match(/^[A-Z0-9-]+$/i) ? 
-            Math.min(95, confidence + 10) : Math.max(70, confidence - 10);
-          break;
-        case 'date':
-          confidence = extractedFields[key].match(/\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}/) ? 
-            Math.min(90, confidence + 5) : Math.max(60, confidence - 15);
-          break;
-        case 'vendor':
-          confidence = extractedFields[key].length > 5 ? 
-            Math.min(85, confidence) : Math.max(50, confidence - 20);
-          break;
-        case 'totalAmount':
-          confidence = extractedFields[key].match(/^\d+\.?\d*$/) ? 
-            Math.min(90, confidence + 5) : Math.max(65, confidence - 10);
-          break;
-        case 'lineItems':
-          confidence = extractedFields[key].length > 0 ? 
-            Math.min(80, confidence) : Math.max(40, confidence - 30);
-          break;
-      }
-      
-      fieldConfidences[key] = Math.round(confidence);
-      totalConfidence += confidence;
-    }
-  });
+  // Required fields scoring
+  if (extractedFields.invoiceNumber) {
+    score += 25;
+    fieldConfidences.invoiceNumber = 85;
+  }
+  if (extractedFields.date) {
+    score += 20;
+    fieldConfidences.date = 80;
+  }
+  if (extractedFields.vendor) {
+    score += 20;
+    fieldConfidences.vendor = 75;
+  }
+  if (extractedFields.totalAmount) {
+    score += 20;
+    fieldConfidences.totalAmount = 85;
+  }
+  if (extractedFields.lineItems?.length > 0) {
+    score += 15;
+    fieldConfidences.lineItems = 70;
+  }
   
   return {
-    overall: fieldCount > 0 ? Math.round(totalConfidence / fieldCount) : 0,
+    overall: Math.min(score, 95),
     fields: fieldConfidences
   };
+};
+
+// Export metadata access
+export const getLastExtractionMetadata = () => {
+  return (window as any).lastExtractionMetadata || {};
 };

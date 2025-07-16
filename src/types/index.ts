@@ -29,11 +29,12 @@ export interface InvoiceData {
 }
 
 export interface AISettings {
-  provider: 'openai' | 'azure' | 'none';
+  provider: 'openai' | 'azure' | 'gemini' | 'none';
   openaiApiKey?: string;
   azureApiKey?: string;
   azureEndpoint?: string;
   azureDeploymentName?: string;
+  geminiApiKey?: string;
 }
 
 export interface ProcessingLog {

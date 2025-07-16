@@ -108,11 +108,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       
       if (data) {
         const settings: AISettings = {
-          provider: data.provider as 'openai' | 'azure' | 'none',
+          provider: data.provider as 'openai' | 'azure' | 'gemini' | 'none',
           openaiApiKey: data.openai_api_key || undefined,
           azureApiKey: data.azure_api_key || undefined,
           azureEndpoint: data.azure_endpoint || undefined,
-          azureDeploymentName: data.azure_deployment_name || undefined
+          azureDeploymentName: data.azure_deployment_name || undefined,
+          geminiApiKey: data.gemini_api_key || undefined
         };
         dispatch({ type: 'SET_AI_SETTINGS', payload: settings });
       }
