@@ -1,145 +1,233 @@
-# Invoice AI Mini Product
+# 🧾 Invoice Processing System
 
-A modern React application for intelligent invoice processing using OCR and AI technology.
+An AI-powered invoice processing application that extracts data from PDF invoices using OCR and Google Gemini AI enhancement. Built with React, TypeScript, Supabase, and deployed on Netlify.
 
-## Features
+## 🚀 Live Demo
 
-- **PDF Upload**: Drag-and-drop interface for uploading PDF invoices
-- **OCR Processing**: Extract text from invoices using Tesseract.js
-- **AI Enhancement**: Improve parsing accuracy with OpenAI or Azure OpenAI
-- **Confidence Indicators**: Show extraction confidence levels for each field
-- **Settings Management**: Configure AI providers and API keys
-- **Processing History**: View and manage all processed invoices
-- **Real-time Logs**: Monitor processing activity and system messages
+**[View Live Demo on Netlify](https://astonishing-travesseiro-93beb0.netlify.app/)**
 
-## Tech Stack
 
-- **Frontend**: React 18 with TypeScript
-- **Backend**: Supabase (PostgreSQL + Auth)
-- **OCR**: Tesseract.js
-- **AI**: OpenAI / Azure OpenAI
+## ✨ Features
+
+- 📄 **PDF Invoice Processing** - Upload and extract text from PDF invoices
+- 🤖 **AI-Powered Enhancement** - Google Gemini integration for improved field extraction
+- 🔍 **Smart OCR** - Hybrid approach using OCR.space API and Tesseract.js
+- 📊 **Field Extraction** - Automatically extracts invoice numbers, dates, vendors, totals, and line items
+- 💾 **Data Persistence** - Supabase backend for storing processed invoices
+- 📈 **Processing Logs** - Real-time processing status and detailed logs
+- ⚙️ **Configurable AI** - Support for multiple AI providers (Gemini, OpenAI, Azure)
+- 📱 **Responsive Design** - Modern UI built with Tailwind CSS
+
+## 🛠️ Tech Stack
+
+- **Frontend**: React 18, TypeScript, Vite
 - **Styling**: Tailwind CSS
-- **Routing**: React Router v6
-- **Icons**: Lucide React
+- **Backend**: Supabase (PostgreSQL, Edge Functions)
+- **OCR**: OCR.space API, Tesseract.js
+- **AI**: Google Gemini API
 - **Deployment**: Netlify
+- **Icons**: Lucide React
 
-## Getting Started
+## 📋 Prerequisites
 
-### Prerequisites
+Before you begin, ensure you have:
 
-- Node.js 16+
-- A Supabase project
-- (Optional) OpenAI or Azure OpenAI API key
+- Node.js 18+ installed
+- npm or yarn package manager
+- Supabase account and project
+- Google AI Studio account (for Gemini API key)
+- Git installed
 
-### Installation
+## 🚀 Setup Instructions
 
-1. Clone the repository:
+### 1. Clone the Repository
+
 ```bash
-git clone <repository-url>
-cd invoice-ai
+git clone https://github.com/s-felman/InvoiceProduct.git
+cd InvoiceProduct
 ```
 
-2. Install dependencies:
+### 2. Install Dependencies
+
 ```bash
 npm install
 ```
 
-3. Set up environment variables:
-```bash
-cp .env.example .env
-```
+### 3. Environment Configuration
 
-Edit `.env` with your Supabase credentials:
-```
-VITE_SUPABASE_URL=your_supabase_url
+Create a `.env.local` file in the root directory:
+
+```env
+VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-4. Set up the database:
-Connect to your Supabase project and run the SQL migrations in `/supabase/migrations/` to create the required tables.
+### 4. Supabase Setup
 
-5. Start the development server:
+#### Initialize Supabase CLI
+
+```bash
+# Install Supabase CLI if not already installed
+npm install -g @supabase/cli
+
+# Login to Supabase
+npx supabase login
+
+# Link to your project
+npx supabase link --project-ref your_project_ref
+```
+
+#### Apply Database Migrations
+
+```bash
+# Navigate to supabase directory
+cd supabase
+
+# Apply all migrations
+npx supabase db push
+
+# Deploy edge functions
+npx supabase functions deploy extract-pdf
+```
+
+### 5. Database Schema
+
+The application uses the following tables:
+
+- `invoices` - Stores processed invoice data
+- `ai_settings` - Stores AI provider configurations
+- `processing_logs` - Stores processing activity logs
+
+All migrations are included in the `supabase/migrations/` directory.
+
+### 6. Get Google Gemini API Key
+
+1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. Create a new API key
+3. Copy the key (starts with "AIza...")
+
+### 7. Configure AI Provider
+
+1. Start the development server:
+   ```bash
+   npm run dev
+   ```
+
+2. Navigate to Settings page
+3. Select "Google Gemini" as provider
+4. Enter your API key
+5. Click "Test Connection" and then "Save Settings"
+
+### 8. Development Server
+
 ```bash
 npm run dev
 ```
 
-### Supabase Setup
+Open [http://localhost:5173](http://localhost:5173) to view the application.
 
-You'll need to create these tables in your Supabase database:
+### Manual Deployment
 
-1. **invoices** - Store invoice processing results
-2. **ai_settings** - Store AI provider configurations
-3. **processing_logs** - Store processing activity logs
-
-Run the migration files in order to set up the database schema.
-
-### AI Configuration
-
-1. Go to the Settings page
-2. Choose your preferred AI provider (OpenAI or Azure OpenAI)
-3. Enter your API credentials
-4. Test the connection
-5. Save settings
-
-## Usage
-
-1. **Upload Invoice**: Drag and drop a PDF invoice on the upload page
-2. **Processing**: The system will extract text using OCR and enhance with AI
-3. **Results**: View extracted fields with confidence indicators
-4. **History**: Review all processed invoices in the history page
-5. **Settings**: Configure AI providers for better accuracy
-
-## Deployment
-
-### Netlify
-
-1. Build the project:
 ```bash
+# Build the project
 npm run build
+
+# Install Netlify CLI
+npm install -g netlify-cli
+
+# Deploy to Netlify
+netlify deploy --prod --dir=dist
 ```
 
-2. Deploy to Netlify:
-- Connect your GitHub repository
-- Set build command: `npm run build`
-- Set publish directory: `dist`
-- Add environment variables in Netlify dashboard
+### AI Enhancement Logic
 
-### Environment Variables for Production
+AI enhancement is triggered when:
+- OCR confidence is below 75%
+- PDF is detected as image-only
+- Basic OCR extraction finds fewer than 3 fields
 
-Set these in your Netlify dashboard:
+## 📊 OCR Processing Pipeline
+
+### 1. PDF Processing (Primary)
 ```
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+PDF → Supabase Edge Function → OCR.space API → Extracted Text
 ```
 
-## API Integration
+### 2. Image Processing (Fallback)
+```
+Image → Browser → Tesseract.js → Extracted Text
+```
 
-### OpenAI
-- Get API key from [OpenAI Dashboard](https://platform.openai.com/api-keys)
-- Uses GPT-3.5-turbo model for invoice parsing
+### 3. Field Extraction
+```
+Raw Text → Regex Patterns → Structured Data → AI Enhancement → Final Result
+```
 
-### Azure OpenAI
-- Set up Azure OpenAI service
-- Get API key, endpoint, and deployment name
-- Configure in the settings page
+## ⚙️ Configuration Options
 
-## Development Notes
+### AI Providers
+- **Google Gemini** (Recommended) - Free with generous limits
+- **OpenAI GPT** - Paid service with high accuracy
+- **Azure OpenAI** - Enterprise option
+- **None** - Basic OCR only
 
-- Uses Tesseract.js for OCR processing
-- Implements confidence scoring for extracted fields
-- Supports both OpenAI and Azure OpenAI for AI enhancement
-- Responsive design with Tailwind CSS
-- Type-safe with TypeScript
-- Context-based state management
+### OCR Settings
+- **OCR.space API** - For PDF processing (free tier)
+- **Tesseract.js** - For image processing and fallback
 
-## Contributing
+## 🔧 API Endpoints
 
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+### Supabase Edge Functions
 
-## License
+- `POST /functions/v1/extract-pdf` - Process PDF files
 
-This project is licensed under the MIT License.
+### Database Tables
+
+- `invoices` - Processed invoice data
+- `ai_settings` - AI configuration
+- `processing_logs` - Activity logs
+
+### Architecture Decisions
+
+1. **Hybrid OCR Approach**
+   - **Server-side (OCR.space)**: Better PDF handling, faster processing
+   - **Client-side (Tesseract.js)**: Fallback option, works offline
+   - **Reasoning**: Reliability through redundancy
+
+2. **Google Gemini over OpenAI**
+   - **Cost**: Free tier vs. paid per request
+   - **Performance**: Comparable accuracy for document parsing
+   - **Scalability**: High rate limits without billing setup
+
+3. **Supabase Backend**
+   - **Real-time**: Built-in real-time subscriptions
+   - **Edge Functions**: Serverless compute for OCR processing
+   - **PostgreSQL**: Robust relational database
+   - **Authentication**: Built-in user management (ready for future)
+
+4. **React + TypeScript**
+   - **Type Safety**: Reduced runtime errors
+   - **Developer Experience**: Better IDE support and refactoring
+   - **Maintainability**: Clear interfaces and contracts
+
+5. **Tailwind CSS**
+   - **Rapid Development**: Utility-first approach
+   - **Consistency**: Design system built-in
+   - **Performance**: Purged CSS in production
+
+### Processing Pipeline Design
+
+1. **Progressive Enhancement**
+   - Basic OCR → Regex Parsing → AI Enhancement
+   - Each step improves data quality
+   - Graceful degradation if AI fails
+
+2. **Confidence-Based Processing**
+   - High confidence: Skip AI (cost savings)
+   - Low confidence: Trigger AI enhancement
+   - Smart resource utilization
+
+3. **Comprehensive Logging**
+   - Real-time feedback to users
+   - Debugging information for developers
+   - Processing transparency
