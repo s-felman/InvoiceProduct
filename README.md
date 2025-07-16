@@ -163,6 +163,44 @@ Image → Browser → Tesseract.js → Extracted Text
 Raw Text → Regex Patterns → Structured Data → AI Enhancement → Final Result
 ```
 
+## 🔧 Development Challenges & Solutions
+
+### Performance Optimization Challenge
+**Problem:** Initial implementation with Tesseract.js was extremely slow for PDF processing, creating poor user experience with long wait times (sometimes 30+ seconds per invoice).
+
+**Solution:** Migrated OCR processing to Supabase Edge Functions with OCR.space API integration:
+- Moved heavy processing from client-side to server-side
+- Leveraged external OCR APIs for faster, more accurate results
+- Reduced processing time from 30+ seconds to 2-3 seconds
+- Maintained Tesseract.js as fallback for image processing
+
+### OCR Configuration & Accuracy Tuning
+**Problem:** Spent significant time fine-tuning OCR extraction settings to achieve reliable results across different invoice formats and quality levels.
+
+**Solution:** Through iterative testing and adjustment:
+- Experimented with different preprocessing techniques
+- Calibrated confidence thresholds for optimal accuracy (75% trigger for AI enhancement)
+- Implemented fallback mechanisms for edge cases
+- Created regex patterns specific to invoice data extraction
+- Added validation rules for common invoice formats
+
+### AI Integration & Cost Considerations
+**Problem:** Initially planned to use OpenAI/Azure OpenAI APIs but encountered cost constraints during development and testing phases.
+
+**Solution:** Pivoted to Google Gemini API for AI enhancement:
+- Gemini offers free tier with generous limits (15 requests/minute)
+- Maintained modular architecture to support multiple AI providers
+- Implemented same functionality with cost-effective solution
+- Kept settings flexible to allow future provider changes
+- Added provider switching capability in settings
+
+### Additional Technical Hurdles
+- **PDF Format Variations:** Handled different PDF structures (text-based vs image-based)
+- **Error Handling:** Created comprehensive error boundaries for failed OCR attempts
+- **State Management:** Managed complex application state during multi-step processing
+- **API Integration:** Coordinated multiple external services (OCR, AI, Database) seamlessly
+- **Processing Pipeline:** Designed confidence-based processing to optimize resource usage
+
 ## ⚙️ Configuration Options
 
 ### AI Providers
@@ -231,3 +269,4 @@ Raw Text → Regex Patterns → Structured Data → AI Enhancement → Final Res
    - Real-time feedback to users
    - Debugging information for developers
    - Processing transparency
+
